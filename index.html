@@ -117,6 +117,36 @@
       padding-top: 8px;
       border-top: 1px solid #eee;
     }
+    .table-wrap {
+      max-height: 52vh;
+      overflow-y: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      background: #fff;
+    }
+    .word-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 16px;
+    }
+    .word-table th,
+    .word-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #eee;
+      vertical-align: top;
+    }
+    .word-table th {
+      position: sticky;
+      top: 0;
+      background: #eef3ff;
+      color: #222;
+      font-weight: bold;
+      z-index: 1;
+    }
+    .word-table tr:last-child td {
+      border-bottom: none;
+    }
   </style>
 </head>
 <body>
@@ -130,6 +160,26 @@
       <div class="buttons">
         <button type="button" class="primary" onclick="startSelectedCategoryCard()">ことばをおぼえる</button>
         <button type="button" class="success" onclick="startSelectedCategoryQuiz()">クイズをする</button>
+        <button type="button" class="secondary" onclick="showWordListScreen()">一覧</button>
+      </div>
+    </div>
+
+    <div id="listScreen" class="hidden">
+      <div class="title">単語一覧</div>
+      <div id="listCategory" class="category"></div>
+      <div class="table-wrap">
+        <table class="word-table">
+          <thead>
+            <tr>
+              <th>英語</th>
+              <th>日本語</th>
+            </tr>
+          </thead>
+          <tbody id="wordListBody"></tbody>
+        </table>
+      </div>
+      <div class="buttons" style="margin-top:16px;">
+        <button type="button" class="secondary" onclick="goHome()">もどる</button>
       </div>
     </div>
 
@@ -209,6 +259,7 @@
 
     function showScreen(name) {
       byId("homeScreen").className = "hidden";
+      byId("listScreen").className = "hidden";
       byId("cardScreen").className = "hidden";
       byId("quizScreen").className = "hidden";
       byId(name).className = "";
@@ -292,6 +343,38 @@
           buttons[i].style.color = "#111";
         }
       }
+    }
+
+    function showWordListScreen() {
+      var list = getWordsByCategory(selectedCategoryId);
+      var tbody = byId("wordListBody");
+      var i, row, tdWord, tdMeaning, label;
+
+      label = "";
+      for (i = 0; i < categories.length; i++) {
+        if (categories[i].id === selectedCategoryId) {
+          label = categories[i].label;
+          break;
+        }
+      }
+      byId("listCategory").textContent = label;
+
+      tbody.innerHTML = "";
+      for (i = 0; i < list.length; i++) {
+        row = document.createElement("tr");
+
+        tdWord = document.createElement("td");
+        tdWord.textContent = list[i].word;
+
+        tdMeaning = document.createElement("td");
+        tdMeaning.textContent = list[i].meaning;
+
+        row.appendChild(tdWord);
+        row.appendChild(tdMeaning);
+        tbody.appendChild(row);
+      }
+
+      showScreen("listScreen");
     }
 
     function startSelectedCategoryCard() {
