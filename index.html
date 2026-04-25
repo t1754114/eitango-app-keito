@@ -73,6 +73,13 @@
       font-size: 16px;
       color: #666;
     }
+    .quiz-example {
+      font-size: 28px;
+      font-weight: bold;
+      margin: 16px 0 10px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
     .category-list {
       display: grid;
       grid-template-columns: 1fr;
@@ -99,6 +106,23 @@
     .category-btn { background: #eef3ff; color: #111; text-align: left; }
     .correct { background: #34c759 !important; color: white !important; }
     .wrong { background: #ff3b30 !important; color: white !important; }
+    .answer-mark {
+      display: inline-block;
+      min-width: 1.4em;
+      margin-right: 8px;
+      font-weight: bold;
+    }
+    .answer-word {
+      display: inline-block;
+      margin-right: 10px;
+      font-weight: bold;
+    }
+    .quiz-target-word {
+      color: #1f6feb;
+      background: #e8f0ff;
+      border-radius: 6px;
+      padding: 0 4px;
+    }
     .result {
       font-size: 30px;
       margin: 20px 0 24px;
@@ -116,6 +140,28 @@
       margin-top: 8px;
       padding-top: 8px;
       border-top: 1px solid #eee;
+    }
+    .option-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .option-btn {
+      background: #eef3ff;
+      color: #111;
+      font-size: 16px;
+    }
+    .option-btn.selected {
+      background: #4f8ef7;
+      color: white;
+      font-weight: bold;
+    }
+    .status-message {
+      min-height: 20px;
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
     }
     .table-wrap {
       max-height: 52vh;
@@ -155,8 +201,14 @@
       <div class="title">えいたんごアプリ</div>
       <div class="subtitle">カテゴリをえらんで、カードかクイズをはじめます</div>
       <div class="small" id="totalInfo"></div>
+      <div class="small" id="homeStreakInfo"></div>
+      <div class="small" id="homeDailyInfo"></div>
       <div style="height:12px;"></div>
       <div id="homeCategories" class="category-list"></div>
+      <div class="option-row" aria-label="カードのならびかた">
+        <button type="button" id="cardOrderSequential" class="option-btn selected" onclick="setCardOrder('sequential')">じゅんばん</button>
+        <button type="button" id="cardOrderRandom" class="option-btn" onclick="setCardOrder('random')">ランダム</button>
+      </div>
       <div class="buttons">
         <button type="button" class="primary" onclick="startSelectedCategoryCard()">ことばをおぼえる</button>
         <button type="button" class="success" onclick="startSelectedCategoryQuiz()">クイズをする</button>
@@ -212,6 +264,7 @@
       </div>
 
       <div id="cardCounter" class="counter"></div>
+      <div id="cardAudioStatus" class="status-message" aria-live="polite"></div>
     </div>
 
     <div id="quizScreen" class="hidden">
@@ -219,18 +272,26 @@
         <div class="title">えいたんごクイズ</div>
         <div id="quizCategory" class="category"></div>
         <div id="quizCount" class="question-count"></div>
-        <div id="quizWord" class="word"></div>
+        <div id="quizStreakInfo" class="small"></div>
+        <div id="quizWord" class="quiz-example"></div>
         <button type="button" class="primary quiz-audio-btn" onclick="speakQuizWord()">🔊 はつおんをきく</button>
         <div id="quizChoices" class="choices"></div>
+        <div id="quizNextArea" class="buttons hidden" style="margin-top:12px;">
+          <button type="button" class="next-btn" onclick="goNextQuiz()">つぎへ</button>
+        </div>
         <div class="buttons" style="margin-top:12px;">
           <button type="button" class="secondary" onclick="goHome()">もどる</button>
         </div>
+        <div id="quizAudioStatus" class="status-message" aria-live="polite"></div>
       </div>
 
       <div id="quizResultArea" class="hidden">
         <div class="title">けっか</div>
         <div id="quizScore" class="result"></div>
+        <div id="quizBestInfo" class="small"></div>
+        <div id="retryInfo" class="small"></div>
         <div class="buttons">
+          <button type="button" id="retryWrongButton" class="success" onclick="retryWrongWords()">まちがえた単語だけ</button>
           <button type="button" class="primary" onclick="restartQuiz()">もういちど</button>
           <button type="button" class="secondary" onclick="goHome()">トップにもどる</button>
         </div>
@@ -252,9 +313,133 @@
     var currentQuestion = null;
     var currentChoices = [];
     var askedQuestionIds = [];
+    var wrongWords = [];
+    var retrySourceWordList = [];
+    var quizMode = "normal";
+    var cardOrderMode = "sequential";
+    var activeAudios = [];
+    var activeAudioTimer = null;
+    var currentStreak = 0;
+    var bestStreak = 0;
+    var dailyGoal = 10;
+    var dailyDone = 0;
+    var dailyDateKey = "";
+    var progressStorageKey = "eitangoProgressV1";
 
     function byId(id) {
       return document.getElementById(id);
+    }
+
+    function getTodayKey() {
+      var now = new Date();
+      var year = String(now.getFullYear());
+      var month = String(now.getMonth() + 1);
+      var date = String(now.getDate());
+      if (month.length < 2) {
+        month = "0" + month;
+      }
+      if (date.length < 2) {
+        date = "0" + date;
+      }
+      return year + "-" + month + "-" + date;
+    }
+
+    function loadProgress() {
+      var raw = localStorage.getItem(progressStorageKey);
+      var data;
+      if (!raw) {
+        dailyDateKey = getTodayKey();
+        return;
+      }
+      try {
+        data = JSON.parse(raw);
+      } catch (error) {
+        dailyDateKey = getTodayKey();
+        return;
+      }
+
+      currentStreak = Number(data.currentStreak) || 0;
+      bestStreak = Number(data.bestStreak) || 0;
+      dailyGoal = Number(data.dailyGoal) || 10;
+      dailyDone = Number(data.dailyDone) || 0;
+      dailyDateKey = data.dailyDateKey || getTodayKey();
+    }
+
+    function saveProgress() {
+      var data = {
+        currentStreak: currentStreak,
+        bestStreak: bestStreak,
+        dailyGoal: dailyGoal,
+        dailyDone: dailyDone,
+        dailyDateKey: dailyDateKey
+      };
+      localStorage.setItem(progressStorageKey, JSON.stringify(data));
+    }
+
+    function ensureDailyProgress() {
+      var today = getTodayKey();
+      if (dailyDateKey !== today) {
+        dailyDateKey = today;
+        dailyDone = 0;
+        saveProgress();
+      }
+    }
+
+    function addDailyDone() {
+      ensureDailyProgress();
+      dailyDone = dailyDone + 1;
+      saveProgress();
+    }
+
+    function updateProgressUI() {
+      ensureDailyProgress();
+      if (byId("homeStreakInfo")) {
+        byId("homeStreakInfo").textContent = "れんぞく正解: " + currentStreak + " / さいこう: " + bestStreak;
+      }
+      if (byId("homeDailyInfo")) {
+        byId("homeDailyInfo").textContent = "きょうのもくひょう: " + dailyDone + " / " + dailyGoal + (dailyDone >= dailyGoal ? " クリア！" : "");
+      }
+      if (byId("quizStreakInfo")) {
+        byId("quizStreakInfo").textContent = "れんぞく正解: " + currentStreak;
+      }
+      if (byId("quizBestInfo")) {
+        byId("quizBestInfo").textContent = "さいこうれんぞく: " + bestStreak;
+      }
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function getHighlightedExampleHtml(exampleText, targetWord) {
+      var example = exampleText || "";
+      var target = targetWord || "";
+      var startIndex;
+      var before;
+      var matched;
+      var after;
+
+      if (!target) {
+        return escapeHtml(example);
+      }
+
+      startIndex = example.toLowerCase().indexOf(target.toLowerCase());
+      if (startIndex === -1) {
+        return escapeHtml(example);
+      }
+
+      before = example.slice(0, startIndex);
+      matched = example.slice(startIndex, startIndex + target.length);
+      after = example.slice(startIndex + target.length);
+
+      return escapeHtml(before) +
+        "<span class='quiz-target-word'>" + escapeHtml(matched) + "</span>" +
+        escapeHtml(after);
     }
 
     function showScreen(name) {
@@ -266,6 +451,8 @@
     }
 
     function goHome() {
+      stopAudio();
+      updateProgressUI();
       showScreen("homeScreen");
     }
 
@@ -293,16 +480,83 @@
     }
 
     function playAudioFile(filePath, repeatTwice) {
+      stopAudio();
+      setAudioStatus("再生しています");
       var audio1 = new Audio(filePath);
-      audio1.play();
+      activeAudios.push(audio1);
+
+      audio1.onerror = function() {
+        setAudioStatus("音声を再生できませんでした");
+      };
 
       if (repeatTwice) {
         audio1.onended = function() {
-          setTimeout(function() {
+          activeAudioTimer = setTimeout(function() {
+            activeAudioTimer = null;
             var audio2 = new Audio(filePath);
-            audio2.play();
+            activeAudios.push(audio2);
+            audio2.onerror = function() {
+              setAudioStatus("音声を再生できませんでした");
+            };
+            audio2.onended = function() {
+              setAudioStatus("");
+            };
+            audio2.play().catch(function() {
+              setAudioStatus("音声を再生できませんでした");
+            });
           }, 300);
         };
+      } else {
+        audio1.onended = function() {
+          setAudioStatus("");
+        };
+      }
+
+      audio1.play().catch(function() {
+        setAudioStatus("音声を再生できませんでした");
+      });
+    }
+
+    function stopAudio() {
+      var i;
+      if (activeAudioTimer) {
+        clearTimeout(activeAudioTimer);
+        activeAudioTimer = null;
+      }
+      for (i = 0; i < activeAudios.length; i++) {
+        activeAudios[i].pause();
+        activeAudios[i].currentTime = 0;
+      }
+      activeAudios = [];
+      setAudioStatus("");
+    }
+
+    function setAudioStatus(message) {
+      if (byId("cardAudioStatus")) {
+        byId("cardAudioStatus").textContent = message;
+      }
+      if (byId("quizAudioStatus")) {
+        byId("quizAudioStatus").textContent = message;
+      }
+    }
+
+    function setCardOrder(mode) {
+      cardOrderMode = mode;
+      updateCardOrderUI();
+    }
+
+    function updateCardOrderUI() {
+      byId("cardOrderSequential").className = "option-btn";
+      byId("cardOrderRandom").className = "option-btn";
+      byId("cardOrderSequential").setAttribute("aria-pressed", "false");
+      byId("cardOrderRandom").setAttribute("aria-pressed", "false");
+
+      if (cardOrderMode === "random") {
+        byId("cardOrderRandom").className = "option-btn selected";
+        byId("cardOrderRandom").setAttribute("aria-pressed", "true");
+      } else {
+        byId("cardOrderSequential").className = "option-btn selected";
+        byId("cardOrderSequential").setAttribute("aria-pressed", "true");
       }
     }
 
@@ -379,6 +633,9 @@
 
     function startSelectedCategoryCard() {
       currentWordList = getWordsByCategory(selectedCategoryId);
+      if (cardOrderMode === "random") {
+        currentWordList = shuffle(currentWordList);
+      }
       currentCardIndex = 0;
       renderCard();
       showScreen("cardScreen");
@@ -420,6 +677,9 @@
     function nextCard() {
       currentCardIndex = currentCardIndex + 1;
       if (currentCardIndex >= currentWordList.length) {
+        if (cardOrderMode === "random") {
+          currentWordList = shuffle(currentWordList);
+        }
         currentCardIndex = 0;
       }
       renderCard();
@@ -427,21 +687,39 @@
 
     function startSelectedCategoryQuiz() {
       currentWordList = getWordsByCategory(selectedCategoryId);
+      retrySourceWordList = currentWordList.slice();
       showScreen("quizScreen");
-      startQuiz();
+      startQuiz("normal");
     }
 
-    function startQuiz() {
+    function startQuiz(mode) {
+      quizMode = mode || "normal";
       quizCount = 0;
       score = 0;
       askedQuestionIds = [];
+      wrongWords = [];
+      if (quizMode === "normal") {
+        totalQuestions = 10;
+      } else {
+        totalQuestions = currentWordList.length;
+      }
       byId("quizArea").className = "";
       byId("quizResultArea").className = "hidden";
       nextQuiz();
     }
 
     function restartQuiz() {
-      startQuiz();
+      currentWordList = getWordsByCategory(selectedCategoryId);
+      retrySourceWordList = currentWordList.slice();
+      startQuiz("normal");
+    }
+
+    function retryWrongWords() {
+      if (wrongWords.length === 0) {
+        return;
+      }
+      currentWordList = shuffle(wrongWords);
+      startQuiz("wrongOnly");
     }
 
     function getUnusedQuestionPool() {
@@ -478,9 +756,9 @@
       askedQuestionIds.push(currentQuestion.id);
 
       wrongPool = [];
-      for (i = 0; i < currentWordList.length; i++) {
-        if (currentWordList[i].quizMeaning !== currentQuestion.quizMeaning) {
-          wrongPool.push(currentWordList[i]);
+      for (i = 0; i < retrySourceWordList.length; i++) {
+        if (retrySourceWordList[i].quizMeaning !== currentQuestion.quizMeaning) {
+          wrongPool.push(retrySourceWordList[i]);
         }
       }
 
@@ -493,14 +771,17 @@
       var i, btn;
       byId("quizCategory").textContent = currentQuestion.categoryLabel || currentQuestion.category;
       byId("quizCount").textContent = quizCount + " / " + totalQuestions;
-      byId("quizWord").textContent = currentQuestion.word;
+      byId("quizWord").innerHTML = getHighlightedExampleHtml(currentQuestion.example || currentQuestion.word, currentQuestion.word);
       byId("quizChoices").innerHTML = "";
+      byId("quizNextArea").className = "buttons hidden";
 
       for (i = 0; i < currentChoices.length; i++) {
         btn = document.createElement("button");
         btn.type = "button";
         btn.className = "choice-btn";
         btn.textContent = currentChoices[i].quizMeaning;
+        btn.setAttribute("data-label", currentChoices[i].quizMeaning);
+        btn.setAttribute("data-word", currentChoices[i].word);
         btn.setAttribute("data-meaning", currentChoices[i].quizMeaning);
         btn.onclick = makeAnswerHandler(btn, currentChoices[i]);
         byId("quizChoices").appendChild(btn);
@@ -527,32 +808,81 @@
       for (i = 0; i < buttons.length; i++) {
         buttons[i].disabled = true;
       }
+      addDailyDone();
 
       if (choice.quizMeaning === currentQuestion.quizMeaning) {
         button.className = "choice-btn correct";
+        setAnswerButtonLabel(button, "○");
         score = score + 1;
+        currentStreak = currentStreak + 1;
+        if (currentStreak > bestStreak) {
+          bestStreak = currentStreak;
+        }
+        saveProgress();
+        updateProgressUI();
+        setTimeout(function() {
+          nextQuiz();
+        }, 1000);
       } else {
         button.className = "choice-btn wrong";
+        setAnswerButtonLabel(button, "×");
+        currentStreak = 0;
+        saveProgress();
+        updateProgressUI();
+        addWrongWord(currentQuestion);
         for (i = 0; i < buttons.length; i++) {
           if (buttons[i].getAttribute("data-meaning") === currentQuestion.quizMeaning) {
             buttons[i].className = "choice-btn correct";
+            setAnswerButtonLabel(buttons[i], "○");
           }
         }
+        byId("quizNextArea").className = "buttons";
       }
+    }
 
-      setTimeout(function() {
-        nextQuiz();
-      }, 1000);
+    function addWrongWord(word) {
+      var i;
+      for (i = 0; i < wrongWords.length; i++) {
+        if (wrongWords[i].id === word.id) {
+          return;
+        }
+      }
+      wrongWords.push(word);
+    }
+
+    function setAnswerButtonLabel(button, mark) {
+      button.innerHTML = "<span class='answer-mark'>" + mark + "</span><span class='answer-word'>" + button.getAttribute("data-word") + "</span>" + button.getAttribute("data-label");
+    }
+
+    function goNextQuiz() {
+      byId("quizNextArea").className = "buttons hidden";
+      nextQuiz();
     }
 
     function showQuizResult() {
       byId("quizArea").className = "hidden";
       byId("quizResultArea").className = "";
       byId("quizScore").textContent = score + " / " + totalQuestions + " せいかい！";
+      updateProgressUI();
+      updateRetryWrongUI();
     }
 
+    function updateRetryWrongUI() {
+      var retryButton = byId("retryWrongButton");
+      if (wrongWords.length === 0) {
+        byId("retryInfo").textContent = "ぜんぶ正解です。よくできました！";
+        retryButton.className = "success hidden";
+      } else {
+        byId("retryInfo").textContent = "まちがえた単語: " + wrongWords.length + "語";
+        retryButton.className = "success";
+      }
+    }
+
+    loadProgress();
+    updateProgressUI();
     byId("totalInfo").textContent = "ぜんぶで " + words.length + "語";
     renderHomeCategories();
+    updateCardOrderUI();
     goHome();
   </script>
 </body>
