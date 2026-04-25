@@ -8,20 +8,46 @@
     body {
       margin: 0;
       font-family: sans-serif;
-      background: #f5f7fb;
+      background-color: #f5f7fb;
       min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
+      position: relative;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      z-index: 0;
+    }
+    body.has-custom-bg::before {
+      opacity: 1;
+      background: linear-gradient(rgba(14, 22, 38, 0.04), rgba(14, 22, 38, 0.02));
     }
     .card {
-      background: white;
+      position: relative;
+      z-index: 1;
+      background: rgba(255,255,255,0.78);
       width: 92%;
       max-width: 620px;
       border-radius: 16px;
       padding: 24px;
       text-align: center;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      box-shadow: 0 16px 44px rgba(0,0,0,0.18);
+      border: 1px solid rgba(255,255,255,0.45);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    body.has-custom-bg .card {
+      background: rgba(255,255,255,0.42);
+      box-shadow: 0 18px 46px rgba(0,0,0,0.2);
+      border-color: rgba(255,255,255,0.34);
+      backdrop-filter: blur(0.5px);
+      -webkit-backdrop-filter: blur(0.5px);
     }
     .title {
       font-size: 26px;
@@ -45,6 +71,9 @@
       padding: 6px 12px;
       border-radius: 999px;
       margin-bottom: 12px;
+    }
+    body.has-custom-bg .category {
+      background: rgba(232,238,252,0.5);
     }
     .word {
       font-size: 40px;
@@ -104,6 +133,10 @@
     .next-btn { background: #34c759; color: white; }
     .choice-btn { background: #e8eefc; color: #000; }
     .category-btn { background: #eef3ff; color: #111; text-align: left; }
+    body.has-custom-bg .choice-btn,
+    body.has-custom-bg .category-btn {
+      background: rgba(238,243,255,0.46);
+    }
     .correct { background: #34c759 !important; color: white !important; }
     .wrong { background: #ff3b30 !important; color: white !important; }
     .answer-mark {
@@ -157,6 +190,12 @@
       color: white;
       font-weight: bold;
     }
+    body.has-custom-bg .option-btn {
+      background: rgba(238,243,255,0.46);
+    }
+    body.has-custom-bg .option-btn.selected {
+      background: rgba(79,142,247,0.8);
+    }
     .status-message {
       min-height: 20px;
       margin-top: 10px;
@@ -169,6 +208,10 @@
       border: 1px solid #e5e7eb;
       border-radius: 12px;
       background: #fff;
+    }
+    body.has-custom-bg .table-wrap {
+      background: rgba(255,255,255,0.46);
+      border-color: rgba(255,255,255,0.42);
     }
     .word-table {
       width: 100%;
@@ -189,6 +232,9 @@
       color: #222;
       font-weight: bold;
       z-index: 1;
+    }
+    body.has-custom-bg .word-table th {
+      background: rgba(238,243,255,0.56);
     }
     .word-table tr:last-child td {
       border-bottom: none;
@@ -218,6 +264,9 @@
       color: #111;
       font-size: 16px;
       padding: 10px 12px;
+    }
+    body.has-custom-bg .bg-setting-btn {
+      background: rgba(238,243,255,0.46);
     }
   </style>
 </head>
@@ -719,17 +768,22 @@
 
     function applyBackgroundImage(dataUrl) {
       if (dataUrl) {
+        document.body.classList.add("has-custom-bg");
         document.body.style.backgroundImage = "url('" + dataUrl + "')";
         document.body.style.backgroundSize = "cover";
         document.body.style.backgroundPosition = "center";
         document.body.style.backgroundRepeat = "no-repeat";
         document.body.style.backgroundAttachment = "fixed";
       } else {
+        document.body.classList.remove("has-custom-bg");
         document.body.style.backgroundImage = "";
         document.body.style.backgroundSize = "";
         document.body.style.backgroundPosition = "";
         document.body.style.backgroundRepeat = "";
         document.body.style.backgroundAttachment = "";
+      }
+      if (byId("homeCategories")) {
+        updateSelectedCategoryUI();
       }
     }
 
@@ -900,14 +954,15 @@
 
     function updateSelectedCategoryUI() {
       var buttons = byId("homeCategories").getElementsByTagName("button");
+      var hasCustomBackground = document.body.classList.contains("has-custom-bg");
       var i, id;
       for (i = 0; i < buttons.length; i++) {
         id = buttons[i].getAttribute("data-id");
         if (id === selectedCategoryId) {
-          buttons[i].style.background = "#4f8ef7";
+          buttons[i].style.background = hasCustomBackground ? "rgba(79,142,247,0.8)" : "#4f8ef7";
           buttons[i].style.color = "white";
         } else {
-          buttons[i].style.background = "#eef3ff";
+          buttons[i].style.background = hasCustomBackground ? "rgba(238,243,255,0.46)" : "#eef3ff";
           buttons[i].style.color = "#111";
         }
       }
